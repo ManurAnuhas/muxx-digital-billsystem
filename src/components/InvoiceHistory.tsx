@@ -106,6 +106,7 @@ export default function InvoiceHistory({
           formData.append('template_id', emailConfig.templateId);
           formData.append('user_id', emailConfig.publicKey);
           formData.append('to_email', invoice.client.email);
+          formData.append('email', invoice.client.email);
           formData.append('to_name', invoice.client.name);
           formData.append('invoice_num', invoice.invoiceInfo.number);
 

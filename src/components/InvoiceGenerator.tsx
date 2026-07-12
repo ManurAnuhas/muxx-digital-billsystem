@@ -159,6 +159,7 @@ export default function InvoiceGenerator({ services, onSave, emailConfig }: Invo
       formData.append('template_id', emailConfig.templateId);
       formData.append('user_id', emailConfig.publicKey);
       formData.append('to_email', client.email);
+      formData.append('email', client.email);
       formData.append('to_name', client.name);
       formData.append('invoice_num', invoiceInfo.number);
       formData.append('total_amount', `LKR ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
