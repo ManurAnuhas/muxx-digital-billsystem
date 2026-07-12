@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { PlusCircle, History, Settings, LogOut, TrendingUp, Users, FileCheck } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import muxxLogo from './assets/logo.png';
+import { PlusCircle, History, Settings, TrendingUp, Users, LayoutDashboard } from 'lucide-react';
 import InvoiceGenerator from './components/InvoiceGenerator';
 import InvoiceHistory from './components/InvoiceHistory';
 import ServiceSettings from './components/ServiceSettings';
+import { fetchInvoices, createInvoice, updateInvoice, deleteInvoice } from './api/invoiceService';
 import './App.css';
 
 interface ServiceOption {
@@ -39,6 +41,14 @@ interface SavedInvoice {
   taxRate: number;
   discount: number;
   total: number;
+  status?: 'pending' | 'paid';
+}
+
+interface EmailConfig {
+  serviceId: string;
+  templateId: string;
+  publicKey: string;
+  attachPdf?: boolean;
 }
 
 const DEFAULT_SERVICES: ServiceOption[] = [
@@ -50,157 +60,195 @@ const DEFAULT_SERVICES: ServiceOption[] = [
   { id: 'preset-6', name: 'SEO Auditing & Optimization', price: 12000 }
 ];
 
+type TabType = 'create' | 'history' | 'settings';
+
+const TAB_META: Record<TabType, { title: string; subtitle: string }> = {
+  create:   { title: 'Create Invoice',   subtitle: 'Generate and send professional billing receipts to clients' },
+  history:  { title: 'Invoice History',  subtitle: 'Search, download, and manage all generated invoices' },
+  settings: { title: 'Service Catalog',  subtitle: 'Configure pricing presets and email integration settings' },
+};
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'create' | 'history' | 'settings'>('create');
-  
-  // Load and state management for preset services
+  const [activeTab, setActiveTab] = useState<TabType>('create');
+
   const [services, setServices] = useState<ServiceOption[]>(() => {
     const saved = localStorage.getItem('muxx_preset_services');
     return saved ? JSON.parse(saved) : DEFAULT_SERVICES;
   });
 
-  // Load and state management for invoice history
-  const [invoices, setInvoices] = useState<SavedInvoice[]>(() => {
-    const saved = localStorage.getItem('muxx_invoices_history');
-    return saved ? JSON.parse(saved) : [];
+  const [emailConfig, setEmailConfig] = useState<EmailConfig>(() => {
+    const saved = localStorage.getItem('muxx_email_config');
+    const defaults = { serviceId: 'service_ik3gpdb', templateId: 'template_nhznk2t', publicKey: 'S4Uim_Y_gCrnTkNyS', attachPdf: false };
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        serviceId: parsed.serviceId || defaults.serviceId,
+        templateId: parsed.templateId || defaults.templateId,
+        publicKey: parsed.publicKey || defaults.publicKey,
+        attachPdf: parsed.attachPdf !== undefined ? parsed.attachPdf : defaults.attachPdf
+      };
+    }
+    return defaults;
   });
 
-  // Synchronize preset services to localStorage
+  const [invoices, setInvoices] = useState<SavedInvoice[]>([]);
+
   useEffect(() => {
-    localStorage.setItem('muxx_preset_services', JSON.stringify(services));
-  }, [services]);
+    fetchInvoices()
+      .then(data => setInvoices(data as SavedInvoice[]))
+      .catch(err => console.error('Failed to load invoices:', err));
+  }, []);
 
-  // Synchronize invoice history to localStorage
-  useEffect(() => {
-    localStorage.setItem('muxx_invoices_history', JSON.stringify(invoices));
-  }, [invoices]);
+  useEffect(() => { localStorage.setItem('muxx_preset_services', JSON.stringify(services)); }, [services]);
+  useEffect(() => { localStorage.setItem('muxx_email_config', JSON.stringify(emailConfig)); }, [emailConfig]);
 
-  // Pricing preset state actions
-  const handleAddService = (name: string, price: number) => {
-    const newService: ServiceOption = {
-      id: `preset-${Date.now()}`,
-      name,
-      price
-    };
-    setServices((prev) => [...prev, newService]);
+  const handleAddService = (name: string, price: number) =>
+    setServices(prev => [...prev, { id: `preset-${Date.now()}`, name, price }]);
+
+  const handleDeleteService = (id: string) =>
+    setServices(prev => prev.filter(s => s.id !== id));
+
+  const handleSaveInvoice = async (invoice: Omit<SavedInvoice, 'id'>) => {
+    try {
+      const newInv = await createInvoice(invoice as Record<string, unknown>) as SavedInvoice;
+      setInvoices(prev => [newInv, ...prev]);
+    } catch (err) {
+      console.error('Error saving invoice:', err);
+    }
   };
 
-  const handleDeleteService = (id: string) => {
-    setServices((prev) => prev.filter((s) => s.id !== id));
+  const handleUpdateInvoiceStatus = async (id: string, status: 'pending' | 'paid') => {
+    try {
+      const updated = await updateInvoice(id, { status }) as SavedInvoice;
+      setInvoices(prev => prev.map(inv => (inv.id === id ? updated : inv)));
+    } catch (err) {
+      console.error('Error updating status:', err);
+    }
   };
 
-  // Invoice saving state actions
-  const handleSaveInvoice = (invoice: Omit<SavedInvoice, 'id'> & { id: string }) => {
-    setInvoices((prev) => [invoice, ...prev]);
+  const handleDeleteInvoice = async (id: string) => {
+    try {
+      await deleteInvoice(id);
+      setInvoices(prev => prev.filter(inv => inv.id !== id));
+    } catch (err) {
+      console.error('Error deleting invoice:', err);
+    }
   };
 
-  const handleDeleteInvoice = (id: string) => {
-    setInvoices((prev) => prev.filter((inv) => inv.id !== id));
-  };
-
-  // Key stats calculation
   const totalBilled = invoices.reduce((sum, inv) => sum + inv.total, 0);
-  const clientCount = new Set(invoices.map((inv) => inv.client.name.toLowerCase())).size;
+  const clientCount = new Set(invoices.map(inv => inv.client.name.toLowerCase())).size;
+
+  const navItems = [
+    { id: 'create'   as TabType, label: 'Create Invoice',  Icon: PlusCircle },
+    { id: 'history'  as TabType, label: 'Invoice History', Icon: History },
+    { id: 'settings' as TabType, label: 'Service Catalog', Icon: Settings },
+  ];
 
   return (
     <div className="app-container">
-      {/* Background glow animations */}
       <div className="ambient-glow-1" />
       <div className="ambient-glow-2" />
 
-      {/* Sidebar Navigation */}
+      {/* ── Sidebar ── */}
       <aside className="sidebar">
+        {/* Brand */}
         <div className="brand-section">
-          <div className="brand-logo-container">
-            <span style={{ fontWeight: 800, fontSize: '1.25rem', color: '#fff' }}>M</span>
-          </div>
-          <div>
-            <h1 className="brand-logo-text">MUXX</h1>
-            <p style={{ fontSize: '0.65rem', color: 'var(--clr-text-muted)', textTransform: 'uppercase', letterSpacing: '1px', marginTop: '-2px' }}>
-              Billing Portal
-            </p>
-          </div>
+          <img src={muxxLogo} alt="Muxx Digital" />
+          <div className="brand-badge">Billing Portal</div>
         </div>
 
-        <ul className="sidebar-menu">
-          <li 
-            className={`menu-item ${activeTab === 'create' ? 'active' : ''}`}
-            onClick={() => setActiveTab('create')}
-          >
-            <PlusCircle size={20} />
-            <span>Create Invoice</span>
-          </li>
-          <li 
-            className={`menu-item ${activeTab === 'history' ? 'active' : ''}`}
-            onClick={() => setActiveTab('history')}
-          >
-            <History size={20} />
-            <span>Invoice History</span>
-          </li>
-          <li 
-            className={`menu-item ${activeTab === 'settings' ? 'active' : ''}`}
-            onClick={() => setActiveTab('settings')}
-          >
-            <Settings size={20} />
-            <span>Configure Catalog</span>
-          </li>
-        </ul>
+        {/* Nav */}
+        <nav className="sidebar-nav">
+          <span className="sidebar-section-label">Navigation</span>
+          {navItems.map(({ id, label, Icon }) => (
+            <div
+              key={id}
+              className={`menu-item ${activeTab === id ? 'active' : ''}`}
+              onClick={() => setActiveTab(id)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={e => e.key === 'Enter' && setActiveTab(id)}
+            >
+              <span className="menu-icon-wrap"><Icon size={16} /></span>
+              <span>{label}</span>
+            </div>
+          ))}
+        </nav>
 
+        {/* Footer */}
         <div className="sidebar-footer">
-          <p>© {new Date().getFullYear()} Muxx Digital</p>
-          <p style={{ fontSize: '0.7rem', color: 'var(--clr-text-muted)', marginTop: '2px' }}>v1.0.0 · Production</p>
+          <div className="sidebar-footer-info">
+            <span><strong>© {new Date().getFullYear()} Muxx Digital</strong></span>
+            <span>v1.0.0 · Production</span>
+          </div>
         </div>
       </aside>
 
-      {/* Main Panel Content */}
+      {/* ── Main ── */}
       <main className="main-content">
-        {/* Main Dashboard Info Cards / Row */}
-        <div className="page-header">
-          <div>
-            <h2 className="page-title">
-              {activeTab === 'create' && 'New Invoice Builder'}
-              {activeTab === 'history' && 'Saved Invoices'}
-              {activeTab === 'settings' && 'Predefined Pricing Settings'}
-            </h2>
-            <p className="page-subtitle">
-              {activeTab === 'create' && 'Generate and download custom client billing receipts'}
-              {activeTab === 'history' && 'Search, download, and review generated customer records'}
-              {activeTab === 'settings' && 'Customize default billing packages and service design prices'}
-            </p>
+        {/* Top Bar */}
+        <header className="top-bar">
+          <div className="top-bar-left">
+            <h2>{TAB_META[activeTab].title}</h2>
+            <p>{TAB_META[activeTab].subtitle}</p>
           </div>
-
-          {/* Stats Badges */}
-          <div style={{ display: 'flex', gap: '1rem' }}>
-            <div className="card" style={{ padding: '0.75rem 1.25rem', display: 'flex', alignItems: 'center', gap: '0.75rem', borderRadius: '12px' }}>
-              <TrendingUp size={20} style={{ color: 'var(--clr-success)' }} />
-              <div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--clr-text-secondary)', textTransform: 'uppercase' }}>Total Invoiced</div>
-                <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>LKR {totalBilled.toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
+          <div className="top-bar-right">
+            <div className="stat-pill">
+              <div className="stat-pill-icon green">
+                <TrendingUp size={15} />
+              </div>
+              <div className="stat-pill-text">
+                <span className="stat-pill-label">Total Billed</span>
+                <span className="stat-pill-value">
+                  LKR {totalBilled.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                </span>
               </div>
             </div>
-            <div className="card" style={{ padding: '0.75rem 1.25rem', display: 'flex', alignItems: 'center', gap: '0.75rem', borderRadius: '12px' }}>
-              <Users size={20} style={{ color: 'var(--clr-secondary)' }} />
-              <div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--clr-text-secondary)', textTransform: 'uppercase' }}>Clients</div>
-                <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{clientCount}</div>
+            <div className="stat-pill">
+              <div className="stat-pill-icon blue">
+                <Users size={15} />
+              </div>
+              <div className="stat-pill-text">
+                <span className="stat-pill-label">Clients</span>
+                <span className="stat-pill-value">{clientCount}</span>
+              </div>
+            </div>
+            <div className="stat-pill">
+              <div className="stat-pill-icon" style={{ background: 'rgba(251,191,36,0.12)', color: '#fbbf24' }}>
+                <LayoutDashboard size={15} />
+              </div>
+              <div className="stat-pill-text">
+                <span className="stat-pill-label">Invoices</span>
+                <span className="stat-pill-value">{invoices.length}</span>
               </div>
             </div>
           </div>
-        </div>
+        </header>
 
-        {/* Dynamic page container */}
+        {/* Page Content */}
         <div className="page-body">
           {activeTab === 'create' && (
-            <InvoiceGenerator services={services} onSave={handleSaveInvoice} />
+            <InvoiceGenerator
+              services={services}
+              onSave={handleSaveInvoice}
+              emailConfig={emailConfig}
+            />
           )}
           {activeTab === 'history' && (
-            <InvoiceHistory invoices={invoices} onDelete={handleDeleteInvoice} />
+            <InvoiceHistory
+              invoices={invoices}
+              onDelete={handleDeleteInvoice}
+              onUpdateStatus={handleUpdateInvoiceStatus}
+              emailConfig={emailConfig}
+            />
           )}
           {activeTab === 'settings' && (
-            <ServiceSettings 
-              services={services} 
-              onAddService={handleAddService} 
-              onDeleteService={handleDeleteService} 
+            <ServiceSettings
+              services={services}
+              onAddService={handleAddService}
+              onDeleteService={handleDeleteService}
+              emailConfig={emailConfig}
+              onSaveEmailConfig={setEmailConfig}
             />
           )}
         </div>

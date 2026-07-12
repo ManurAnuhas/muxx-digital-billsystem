@@ -1,0 +1,35 @@
+{
+  "invoices": [
+    {
+      "id": "bb180e45-181b-4f9f-9f34-2634b67f847a",
+      "invoiceInfo": {
+        "number": "MD-000010",
+        "date": "2026-07-12",
+        "dueDate": "2026-07-19"
+      },
+      "client": {
+        "name": "Uvindu Jayasinghe",
+        "email": "Dushsamu1996@gmail.com",
+        "phone": "+94 77 141 8914",
+        "address": ""
+      },
+      "items": [
+        {
+          "description": "Jersey Design",
+          "qty": 1,
+          "price": 4500
+        },
+        {
+          "description": "Jacket Design",
+          "qty": 1,
+          "price": 5000
+        }
+      ],
+      "subtotal": 9500,
+      "taxRate": 0,
+      "discount": 0,
+      "total": 9500,
+      "status": "pending"
+    }
+  ]
+}
