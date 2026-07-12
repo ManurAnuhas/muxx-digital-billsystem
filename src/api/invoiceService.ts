@@ -1,35 +1,43 @@
-export const API_BASE = 'http://localhost:4000';
+// ── localStorage-based storage (no backend required on Vercel) ──────────────
+const STORAGE_KEY = 'muxx_invoices';
+
+const getAll = (): Record<string, unknown>[] => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveAll = (invoices: Record<string, unknown>[]) => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(invoices));
+};
+
+// ── Public API (same signatures as before) ───────────────────────────────────
 
 export const fetchInvoices = async (): Promise<unknown[]> => {
-  const res = await fetch(`${API_BASE}/invoices`);
-  if (!res.ok) throw new Error('Failed to fetch invoices');
-  return res.json();
+  return getAll();
 };
 
 export const createInvoice = async (invoice: Record<string, unknown>): Promise<unknown> => {
-  const res = await fetch(`${API_BASE}/invoices`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(invoice),
-  });
-  if (!res.ok) throw new Error('Failed to create invoice');
-  return res.json();
+  const invoices = getAll();
+  const newInvoice = { ...invoice, id: `inv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
+  saveAll([newInvoice, ...invoices]);
+  return newInvoice;
 };
 
 export const updateInvoice = async (id: string, data: Record<string, unknown>): Promise<unknown> => {
-  const res = await fetch(`${API_BASE}/invoices/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error('Failed to update invoice');
-  return res.json();
+  const invoices = getAll();
+  const updated = invoices.map(inv =>
+    (inv as { id: string }).id === id ? { ...inv, ...data } : inv
+  );
+  saveAll(updated);
+  return updated.find(inv => (inv as { id: string }).id === id);
 };
 
 export const deleteInvoice = async (id: string): Promise<void> => {
-  const res = await fetch(`${API_BASE}/invoices/${id}`, {
-    method: 'DELETE',
-  });
-  if (!res.ok && res.status !== 204) throw new Error('Failed to delete invoice');
+  const invoices = getAll();
+  saveAll(invoices.filter(inv => (inv as { id: string }).id !== id));
 };
 
