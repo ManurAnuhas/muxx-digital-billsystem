@@ -3,7 +3,9 @@ import {
   Download, Trash2, Calendar, FileText, DollarSign,
   Inbox, Clock, CheckCircle, Mail
 } from 'lucide-react';
-import muxxLogo from '../assets/logo.png';
+
+// Public URL — works in emails and PDFs (local imports don't work in email clients)
+const LOGO_URL = 'https://raw.githubusercontent.com/ManurAnuhas/muxx-digital-billsystem/main/public/logo.png';
 
 interface InvoiceItem {
   description: string;
@@ -254,7 +256,7 @@ export default function InvoiceHistory({
                 >
                   <div className="invoice-pdf-header">
                     <div className="invoice-pdf-brand">
-                      <img src={muxxLogo} alt="Muxx Digital" />
+                      <img src={LOGO_URL} alt="Muxx Digital" crossOrigin="anonymous" />
                       <div className="invoice-pdf-brand-details">
                         Panadura, Sri Lanka<br />
                         Phone: +94779474855<br />
