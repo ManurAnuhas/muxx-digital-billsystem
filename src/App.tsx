@@ -42,6 +42,7 @@ interface SavedInvoice {
   discount: number;
   total: number;
   status?: 'pending' | 'paid';
+  driveLink?: string;
 }
 
 interface EmailConfig {
@@ -117,9 +118,9 @@ export default function App() {
     }
   };
 
-  const handleUpdateInvoiceStatus = async (id: string, status: 'pending' | 'paid') => {
+  const handleUpdateInvoiceStatus = async (id: string, status: 'pending' | 'paid', driveLink?: string) => {
     try {
-      const updated = await updateInvoice(id, { status }) as SavedInvoice;
+      const updated = await updateInvoice(id, { status, driveLink }) as SavedInvoice;
       setInvoices(prev => prev.map(inv => (inv.id === id ? updated : inv)));
     } catch (err) {
       console.error('Error updating status:', err);
@@ -232,6 +233,7 @@ export default function App() {
               services={services}
               onSave={handleSaveInvoice}
               emailConfig={emailConfig}
+              invoices={invoices}
             />
           )}
           {activeTab === 'history' && (

@@ -1,8 +1,8 @@
-import { useState, useMemo, useCallback } from 'react';
-import muxxLogo from '../assets/logo.png';
+import { useState, useMemo, useCallback, useEffect } from 'react';
+import { LOGO_BASE64 } from '../assets/logoBase64';
 import {
   Plus, Trash2, Download, Save, User,
-  FileText, Mail, Sparkles, Receipt
+  FileText, Mail, Sparkles, Receipt, Link
 } from 'lucide-react';
 
 interface InvoiceItem {
@@ -37,6 +37,19 @@ interface EmailConfig {
   attachPdf?: boolean;
 }
 
+interface SavedInvoice {
+  id: string;
+  invoiceInfo: InvoiceInfo;
+  client: ClientInfo;
+  items: InvoiceItem[];
+  subtotal: number;
+  taxRate: number;
+  discount: number;
+  total: number;
+  status?: 'pending' | 'paid';
+  driveLink?: string;
+}
+
 interface InvoiceGeneratorProps {
   services: ServiceOption[];
   onSave: (invoice: {
@@ -49,11 +62,51 @@ interface InvoiceGeneratorProps {
     discount: number;
     total: number;
     status: 'pending' | 'paid';
+    driveLink?: string;
   }) => void;
   emailConfig: EmailConfig;
+  invoices?: SavedInvoice[];
 }
 
-export default function InvoiceGenerator({ services, onSave, emailConfig }: InvoiceGeneratorProps) {
+const getNextInvoiceNumber = (invoices: SavedInvoice[]) => {
+  if (!invoices || invoices.length === 0) {
+    return 'MD-0013';
+  }
+  
+  let highestNum = 12; // Start from 12 so next is 13
+  let bestPrefix = 'MD-';
+  let bestPadding = 4;
+
+  invoices.forEach(inv => {
+    const numStr = inv.invoiceInfo?.number || '';
+    const match = numStr.match(/^(.*?)(\d+)$/);
+    if (match) {
+      const prefix = match[1];
+      const digits = match[2];
+      const val = parseInt(digits, 10);
+      if (!isNaN(val) && val > highestNum) {
+        highestNum = val;
+        bestPrefix = prefix;
+        bestPadding = digits.length;
+      }
+    } else {
+      const digitMatch = numStr.match(/\d+/);
+      if (digitMatch) {
+        const val = parseInt(digitMatch[0], 10);
+        if (!isNaN(val) && val > highestNum) {
+          highestNum = val;
+          bestPadding = digitMatch[0].length;
+        }
+      }
+    }
+  });
+
+  const nextVal = highestNum + 1;
+  const paddedVal = String(nextVal).padStart(bestPadding, '0');
+  return `${bestPrefix}${paddedVal}`;
+};
+
+export default function InvoiceGenerator({ services, onSave, emailConfig, invoices = [] }: InvoiceGeneratorProps) {
   const [client, setClient] = useState<ClientInfo>({ name: '', email: '', phone: '', address: '' });
 
   const [invoiceInfo, setInvoiceInfo] = useState<InvoiceInfo>({
@@ -62,6 +115,7 @@ export default function InvoiceGenerator({ services, onSave, emailConfig }: Invo
     dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   });
 
+  const [driveLink, setDriveLink] = useState<string>('');
   const [items, setItems] = useState<InvoiceItem[]>([{ description: '', qty: 1, price: 0 }]);
   const [selectedServiceId, setSelectedServiceId] = useState<string>('');
   const [discount, setDiscount] = useState<number>(0);
@@ -69,10 +123,36 @@ export default function InvoiceGenerator({ services, onSave, emailConfig }: Invo
   const [sendingEmail, setSendingEmail] = useState<boolean>(false);
   const [status, setStatus] = useState<'pending' | 'paid'>('pending');
 
+  useEffect(() => {
+    if (invoices && invoices.length > 0) {
+      setInvoiceInfo(prev => {
+        const isDefaultTimestamp = prev.number.startsWith('MD-') && prev.number.length >= 9 && !isNaN(Number(prev.number.slice(3)));
+        if (isDefaultTimestamp || prev.number === 'MD-0013') {
+          return {
+            ...prev,
+            number: getNextInvoiceNumber(invoices)
+          };
+        }
+        return prev;
+      });
+    } else {
+      setInvoiceInfo(prev => {
+        const isDefaultTimestamp = prev.number.startsWith('MD-') && prev.number.length >= 9 && !isNaN(Number(prev.number.slice(3)));
+        if (isDefaultTimestamp) {
+          return {
+            ...prev,
+            number: 'MD-0013'
+          };
+        }
+        return prev;
+      });
+    }
+  }, [invoices]);
+
   const subtotal = useMemo(() => items.reduce((s, i) => s + i.qty * i.price, 0), [items]);
   const discountAmount = useMemo(() => (subtotal * discount) / 100, [subtotal, discount]);
   const taxAmount = useMemo(() => ((subtotal - discountAmount) * taxRate) / 100, [subtotal, discountAmount, taxRate]);
-  const total = useMemo(() => subtotal - discountAmount + taxAmount, [subtotal, discountAmount, taxAmount]);
+  const total = useMemo(() => subtotal - discountAmount + taxAmount, [subtotal, discountAmount, taxRate]);
 
   const handleItemChange = useCallback((index: number, field: keyof InvoiceItem, value: string | number) => {
     setItems(prev => {
@@ -115,11 +195,11 @@ export default function InvoiceGenerator({ services, onSave, emailConfig }: Invo
     try {
       const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
       (element as HTMLElement).style.zoom = originalZoom;
-      const imgData = canvas.toDataURL('image/png');
+      const imgData = canvas.toDataURL('image/jpeg', 0.7);
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
       pdf.save(`Muxx_Invoice_${invoiceInfo.number}.pdf`);
     } catch (err) {
       (element as HTMLElement).style.zoom = originalZoom;
@@ -147,11 +227,11 @@ export default function InvoiceGenerator({ services, onSave, emailConfig }: Invo
       ]);
       const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
       (element as HTMLElement).style.zoom = originalZoom;
-      const imgData = canvas.toDataURL('image/png');
+      const imgData = canvas.toDataURL('image/jpeg', 0.7);
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
       const pdfBlob = pdf.output('blob');
 
       const formData = new FormData();
@@ -164,6 +244,7 @@ export default function InvoiceGenerator({ services, onSave, emailConfig }: Invo
       formData.append('invoice_num', invoiceInfo.number);
       formData.append('total_amount', `LKR ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
       formData.append('items_summary', items.map(item => `${item.description} (x${item.qty})`).join(', '));
+      formData.append('drive_link', driveLink || '');
       if (emailConfig.attachPdf) {
         formData.append('invoice_pdf', pdfBlob, `Muxx_Invoice_${invoiceInfo.number}.pdf`);
       }
@@ -176,13 +257,13 @@ export default function InvoiceGenerator({ services, onSave, emailConfig }: Invo
       console.error('Email error:', err);
       alert(`Failed to send email: ${err.message || err}`);
     } finally { setSendingEmail(false); }
-  }, [client, invoiceInfo, total, items, emailConfig]);
+  }, [client, invoiceInfo, total, items, emailConfig, driveLink]);
 
   const handleSaveInvoice = useCallback(() => {
     if (!client.name) { alert('Please enter a Client Name before saving.'); return; }
-    onSave({ id: Date.now().toString(), invoiceInfo, client, items, subtotal, taxRate, discount, total, status });
+    onSave({ id: Date.now().toString(), invoiceInfo, client, items, subtotal, taxRate, discount, total, status, driveLink });
     alert('Invoice saved to history!');
-  }, [client, invoiceInfo, items, subtotal, taxRate, discount, total, status, onSave]);
+  }, [client, invoiceInfo, items, subtotal, taxRate, discount, total, status, driveLink, onSave]);
 
   const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2 });
 
@@ -263,6 +344,14 @@ export default function InvoiceGenerator({ services, onSave, emailConfig }: Invo
                   <span className="status-dot-pulse paid" />
                   <span>Paid</span>
                 </button>
+              </div>
+            </div>
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <label>Google Drive / Deliverable Link (Optional)</label>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <span style={{ position: 'absolute', left: '0.75rem', color: 'var(--txt-lo)' }}><Link size={14} /></span>
+                <input type="url" className="form-control" style={{ paddingLeft: '2.25rem' }} placeholder="e.g. https://drive.google.com/drive/folders/..."
+                  value={driveLink} onChange={e => setDriveLink(e.target.value)} />
               </div>
             </div>
           </div>
@@ -406,7 +495,7 @@ export default function InvoiceGenerator({ services, onSave, emailConfig }: Invo
             {/* Header */}
             <div className="invoice-pdf-header">
               <div className="invoice-pdf-brand">
-                <img src={muxxLogo} alt="Muxx Digital" />
+                <img src={LOGO_BASE64} alt="Muxx Digital" />
                 <div className="invoice-pdf-brand-details">
                   Panadura, Sri Lanka<br />
                   Phone: +94779474855<br />
@@ -438,12 +527,20 @@ export default function InvoiceGenerator({ services, onSave, emailConfig }: Invo
                 </div>
                 <div className="pdf-address-col">
                   <h4>Payment Info</h4>
-                  <p>
-                    Bank: Sampath Bank<br />
-                    Acc Name: A.M.Anuhas<br />
-                    Acc No: 104752497687<br />
-                    Branch: Panadura
-                  </p>
+                  {status === 'paid' ? (
+                    <p style={{ color: 'var(--emerald)', fontWeight: 'bold' }}>
+                      Payment Status: PAID<br />
+                      Method: Bank Transfer / Online<br />
+                      Thank you for your payment!
+                    </p>
+                  ) : (
+                    <p>
+                      Bank: Sampath Bank<br />
+                      Acc Name: A.M.Anuhas<br />
+                      Acc No: 104752497687<br />
+                      Branch: Panadura
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -474,6 +571,14 @@ export default function InvoiceGenerator({ services, onSave, emailConfig }: Invo
                 <div className="pdf-notes">
                   <h5>Terms & Conditions</h5>
                   <p>Please send payments within the due date. Contact us for any invoice-related queries.</p>
+                  {status === 'paid' && driveLink && (
+                    <div style={{ marginTop: '0.75rem', padding: '0.5rem', background: 'rgba(16,185,129,0.08)', borderRadius: '4px', border: '1px solid rgba(16,185,129,0.2)' }}>
+                      <h5 style={{ margin: 0, fontSize: '0.75rem', color: 'var(--emerald)' }}>Project / Deliverables Link</h5>
+                      <a href={driveLink} target="_blank" rel="noreferrer" style={{ fontSize: '0.72rem', color: 'var(--emerald)', wordBreak: 'break-all', textDecoration: 'underline' }}>
+                        {driveLink}
+                      </a>
+                    </div>
+                  )}
                 </div>
                 <div className="pdf-totals-table">
                   <div className="pdf-totals-row">

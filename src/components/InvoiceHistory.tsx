@@ -1,11 +1,9 @@
 import { useState, useCallback } from 'react';
 import {
   Download, Trash2, Calendar, FileText, DollarSign,
-  Inbox, Clock, CheckCircle, Mail
+  Inbox, Clock, CheckCircle, Mail, Link
 } from 'lucide-react';
-
-// Public URL — works in emails and PDFs (local imports don't work in email clients)
-const LOGO_URL = 'https://raw.githubusercontent.com/ManurAnuhas/muxx-digital-billsystem/main/public/logo.png';
+import { LOGO_BASE64 } from '../assets/logoBase64';
 
 interface InvoiceItem {
   description: string;
@@ -36,6 +34,7 @@ interface SavedInvoice {
   discount: number;
   total: number;
   status?: 'pending' | 'paid';
+  driveLink?: string;
 }
 
 interface EmailConfig {
@@ -48,7 +47,7 @@ interface EmailConfig {
 interface InvoiceHistoryProps {
   invoices: SavedInvoice[];
   onDelete: (id: string) => void;
-  onUpdateStatus: (id: string, status: 'pending' | 'paid') => void;
+  onUpdateStatus: (id: string, status: 'pending' | 'paid', driveLink?: string) => void;
   emailConfig: EmailConfig;
 }
 
@@ -65,10 +64,25 @@ export default function InvoiceHistory({
 
   // Core capture and execution handler
   const handleTriggerAction = useCallback((invoice: SavedInvoice, action: 'download' | 'email') => {
-    setActiveCapture({ id: invoice.id, action });
+    let finalInvoice = { ...invoice };
+    if (action === 'email' && invoice.status === 'paid') {
+      const userLink = window.prompt(
+        `Sending Payment Receipt for Invoice #${invoice.invoiceInfo.number}.\n\nVerify or update the Google Drive / Deliverables Link (Optional):`,
+        invoice.driveLink || ''
+      );
+      if (userLink === null) {
+        return; // cancelled
+      }
+      finalInvoice.driveLink = userLink;
+      if (userLink !== invoice.driveLink) {
+        onUpdateStatus(invoice.id, 'paid', userLink);
+      }
+    }
+
+    setActiveCapture({ id: finalInvoice.id, action });
 
     setTimeout(async () => {
-      const element = document.getElementById(`invoice-print-capture-${invoice.id}`);
+      const element = document.getElementById(`invoice-print-capture-${finalInvoice.id}`);
       if (!element) {
         alert('Invoice render template not found.');
         setActiveCapture(null);
@@ -81,11 +95,11 @@ export default function InvoiceHistory({
 
       try {
         const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-        const imgData = canvas.toDataURL('image/png');
+        const imgData = canvas.toDataURL('image/jpeg', 0.7);
         const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
         const pdfWidth = pdf.internal.pageSize.getWidth();
         const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
 
         if (action === 'download') {
           pdf.save(`Muxx_Invoice_${invoice.invoiceInfo.number}.pdf`);
@@ -117,8 +131,9 @@ export default function InvoiceHistory({
           formData.append('subject', `${statusText} - Invoice ${invoice.invoiceInfo.number}`);
           formData.append('total_amount', `LKR ${invoice.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
           formData.append('items_summary', invoice.items.map(item => `${item.description} (x${item.qty})`).join(', '));
+          formData.append('drive_link', finalInvoice.driveLink || '');
           if (emailConfig.attachPdf) {
-            formData.append('invoice_pdf', pdfBlob, `Muxx_Invoice_${invoice.invoiceInfo.number}.pdf`);
+            formData.append('invoice_pdf', pdfBlob, `Muxx_Invoice_${finalInvoice.invoiceInfo.number}.pdf`);
           }
 
           const response = await fetch('https://api.emailjs.com/api/v1.0/email/send-form', {
@@ -127,7 +142,7 @@ export default function InvoiceHistory({
           });
 
           if (response.ok) {
-            alert(`Email sent successfully to ${invoice.client.name} (${invoice.client.email})!`);
+            alert(`Email sent successfully to ${finalInvoice.client.name} (${finalInvoice.client.email})!`);
           } else {
             const errorMsg = await response.text();
             throw new Error(errorMsg || 'Failed sending email.');
@@ -140,11 +155,19 @@ export default function InvoiceHistory({
         setActiveCapture(null);
       }
     }, 150);
-  }, [emailConfig]);
+  }, [emailConfig, onUpdateStatus]);
 
   // Mark invoice as Paid handler
   const handleMarkAsPaid = useCallback((invoice: SavedInvoice) => {
-    onUpdateStatus(invoice.id, 'paid');
+    const defaultLink = invoice.driveLink || '';
+    const userLink = window.prompt(
+      `Invoice #${invoice.invoiceInfo.number} will be marked as PAID!\n\nEnter the Google Drive / Deliverables Link for this client (Optional):`,
+      defaultLink
+    );
+    
+    if (userLink === null) return; // User cancelled
+    
+    onUpdateStatus(invoice.id, 'paid', userLink);
     
     // Auto-prompt to send the receipt
     const confirmEmail = window.confirm(
@@ -153,7 +176,7 @@ export default function InvoiceHistory({
 
     if (confirmEmail) {
       // Trigger email send process for the updated paid invoice
-      handleTriggerAction({ ...invoice, status: 'paid' }, 'email');
+      handleTriggerAction({ ...invoice, status: 'paid', driveLink: userLink }, 'email');
     }
   }, [onUpdateStatus, handleTriggerAction]);
 
@@ -198,6 +221,24 @@ export default function InvoiceHistory({
                 <span className="history-amount">
                   <DollarSign size={13} /> LKR {fmt(invoice.total)}
                 </span>
+                {invoice.driveLink && (
+                  <a
+                    href={invoice.driveLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Open Drive Link"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      color: 'var(--emerald)',
+                      fontWeight: 600,
+                      textDecoration: 'underline'
+                    }}
+                  >
+                    <Link size={13} /> Project Drive Link
+                  </a>
+                )}
               </div>
             </div>
 
@@ -256,7 +297,7 @@ export default function InvoiceHistory({
                 >
                   <div className="invoice-pdf-header">
                     <div className="invoice-pdf-brand">
-                      <img src={LOGO_URL} alt="Muxx Digital" crossOrigin="anonymous" />
+                      <img src={LOGO_BASE64} alt="Muxx Digital" />
                       <div className="invoice-pdf-brand-details">
                         Panadura, Sri Lanka<br />
                         Phone: +94779474855<br />
@@ -286,12 +327,20 @@ export default function InvoiceHistory({
                       </div>
                       <div className="pdf-address-col">
                         <h4>Payment Info</h4>
-                        <p>
-                          Bank: Sampath Bank<br />
-                          Acc Name: A.M.Anuhas<br />
-                          Acc No: 104752497687<br />
-                          Branch: Panadura
-                        </p>
+                        {status === 'paid' ? (
+                          <p style={{ color: 'var(--emerald)', fontWeight: 'bold' }}>
+                            Payment Status: PAID<br />
+                            Method: Bank Transfer / Online<br />
+                            Thank you for your payment!
+                          </p>
+                        ) : (
+                          <p>
+                            Bank: Sampath Bank<br />
+                            Acc Name: A.M.Anuhas<br />
+                            Acc No: 104752497687<br />
+                            Branch: Panadura
+                          </p>
+                        )}
                       </div>
                     </div>
 
@@ -320,6 +369,14 @@ export default function InvoiceHistory({
                       <div className="pdf-notes">
                         <h5>Terms & Conditions</h5>
                         <p>Please send payments within the due date. Contact us for any invoice-related queries.</p>
+                        {status === 'paid' && invoice.driveLink && (
+                          <div style={{ marginTop: '0.75rem', padding: '0.5rem', background: 'rgba(16,185,129,0.08)', borderRadius: '4px', border: '1px solid rgba(16,185,129,0.2)' }}>
+                            <h5 style={{ margin: 0, fontSize: '0.75rem', color: 'var(--emerald)' }}>Project / Deliverables Link</h5>
+                            <a href={invoice.driveLink} target="_blank" rel="noreferrer" style={{ fontSize: '0.72rem', color: 'var(--emerald)', wordBreak: 'break-all', textDecoration: 'underline' }}>
+                              {invoice.driveLink}
+                            </a>
+                          </div>
+                        )}
                       </div>
                       <div className="pdf-totals-table">
                         <div className="pdf-totals-row">
