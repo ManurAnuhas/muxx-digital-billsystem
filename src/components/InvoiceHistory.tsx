@@ -63,7 +63,7 @@ export default function InvoiceHistory({
 }: InvoiceHistoryProps) {
   const notify = useCallback((msg: string, t: 'success' | 'error' | 'info' = 'info') => {
     if (showToast) showToast(msg, t);
-    else alert(msg);
+    else console.log(`[${t.toUpperCase()}] ${msg}`);
   }, [showToast]);
   // Capture invoice state: tracks which invoice is currently being rendered/captured, and the action ('download' or 'email')
   const [activeCapture, setActiveCapture] = useState<{ id: string; action: 'download' | 'email' } | null>(null);

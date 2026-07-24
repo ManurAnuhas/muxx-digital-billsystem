@@ -113,7 +113,7 @@ const getNextInvoiceNumber = (invoices: SavedInvoice[], type: 'invoice' | 'quota
 export default function InvoiceGenerator({ type = 'invoice', services, onSave, emailConfig, invoices = [], showToast }: InvoiceGeneratorProps) {
   const notify = useCallback((msg: string, t: 'success' | 'error' | 'info' = 'info') => {
     if (showToast) showToast(msg, t);
-    else alert(msg);
+    else console.log(`[${t.toUpperCase()}] ${msg}`);
   }, [showToast]);
   const [client, setClient] = useState<ClientInfo>({ name: '', email: '', phone: '', address: '' });
 
