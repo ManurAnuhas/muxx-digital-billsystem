@@ -307,10 +307,10 @@ export default function InvoiceGenerator({ type = 'invoice', services, onSave, e
       const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
         import('html2canvas'), import('jspdf')
       ]);
-      // Generate optimized PDF for email (smaller file size, still readable)
-      const emailCanvas = await html2canvas(element, { scale: 1.2, useCORS: true, backgroundColor: '#ffffff' });
+      // Generate ultra-compressed PDF for email attachment (guaranteed under 50KB limit)
+      const emailCanvas = await html2canvas(element, { scale: 0.75, useCORS: true, backgroundColor: '#ffffff' });
       (element as HTMLElement).style.zoom = originalZoom;
-      const emailImgData = emailCanvas.toDataURL('image/jpeg', 0.45);
+      const emailImgData = emailCanvas.toDataURL('image/jpeg', 0.25);
       const emailPdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pdfWidth = emailPdf.internal.pageSize.getWidth();
       const pdfHeight = (emailCanvas.height * pdfWidth) / emailCanvas.width;
