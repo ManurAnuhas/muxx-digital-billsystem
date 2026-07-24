@@ -28,6 +28,19 @@ async function init() {
   await db.read();
   db.data ??= { invoices: [] };
 
+  // POST /login
+  app.post('/login', (req: Request, res: Response) => {
+    const { username, password } = req.body;
+    const adminUser = process.env.ADMIN_USERNAME || 'admin';
+    const adminPass = process.env.ADMIN_PASSWORD || 'admin123';
+    
+    if (username === adminUser && password === adminPass) {
+      res.json({ success: true, message: 'Login successful' });
+    } else {
+      res.status(401).json({ success: false, error: 'Invalid credentials' });
+    }
+  });
+
   // GET all invoices
   app.get('/invoices', (_req: Request, res: Response) => {
     res.json(db.data!.invoices);

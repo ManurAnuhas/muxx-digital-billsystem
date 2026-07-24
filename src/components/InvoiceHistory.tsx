@@ -133,6 +133,7 @@ export default function InvoiceHistory({
             ? 'QUOTATION' 
             : (invoice.status === 'paid' ? 'PAID RECEIPT' : 'INVOICE DUE');
           formData.append('subject', `${statusText} - ${type === 'quotation' ? 'Quotation' : 'Invoice'} ${invoice.invoiceInfo.number}`);
+          formData.append('document_type', type === 'quotation' ? 'Quotation' : 'Invoice');
           formData.append('total_amount', `LKR ${invoice.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
           formData.append('items_summary', invoice.items.map(item => `${item.description} (x${item.qty})`).join(', '));
           formData.append('drive_link', finalInvoice.driveLink || '');

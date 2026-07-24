@@ -328,6 +328,7 @@ export default function InvoiceGenerator({ type = 'invoice', services, onSave, e
       formData.append('items_summary', items.map(item => `${item.description} (x${item.qty})`).join(', '));
       formData.append('drive_link', driveLink || '');
       formData.append('subject', type === 'quotation' ? `Quotation ${invoiceInfo.number} from Muxx Digital` : `Invoice ${invoiceInfo.number} from Muxx Digital`);
+      formData.append('document_type', type === 'quotation' ? 'Quotation' : 'Invoice');
       if (emailConfig.attachPdf) {
         formData.append('invoice_pdf', pdfBlob, `Muxx_${type === 'quotation' ? 'Quotation' : 'Invoice'}_${invoiceInfo.number}.pdf`);
       }

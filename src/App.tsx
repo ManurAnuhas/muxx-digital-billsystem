@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 import muxxLogo from './assets/logo.png';
-import { PlusCircle, History, Settings, TrendingUp, Users, LayoutDashboard, FileText, FileSpreadsheet } from 'lucide-react';
+import { PlusCircle, History, Settings, TrendingUp, Users, LayoutDashboard, FileText, FileSpreadsheet, LogOut, Loader2, Menu, X } from 'lucide-react';
 import InvoiceGenerator from './components/InvoiceGenerator';
 import InvoiceHistory from './components/InvoiceHistory';
 import ServiceSettings from './components/ServiceSettings';
+import AdminLogin from './components/AdminLogin';
+import { auth } from './lib/firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { 
   fetchInvoices, createInvoice, updateInvoice, deleteInvoice,
   fetchQuotations, createQuotation, updateQuotation, deleteQuotation
@@ -76,6 +79,18 @@ const TAB_META: Record<TabType, { title: string; subtitle: string }> = {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('create');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setIsAuthenticated(!!user);
+      setIsAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const [services, setServices] = useState<ServiceOption[]>(() => {
     const saved = localStorage.getItem('muxx_preset_services');
@@ -118,6 +133,19 @@ export default function App() {
 
   const handleDeleteService = (id: string) =>
     setServices(prev => prev.filter(s => s.id !== id));
+
+  const handleLogin = () => {
+    setIsAuthenticated(true);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setIsAuthenticated(false);
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
 
   // Invoice Handlers
   const handleSaveInvoice = async (invoice: Omit<SavedInvoice, 'id'>) => {
@@ -189,13 +217,31 @@ export default function App() {
     { id: 'settings'          as TabType, label: 'Service Catalog',     Icon: Settings },
   ];
 
+  if (isAuthLoading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#0f172a' }}>
+        <Loader2 className="spinner" style={{ color: '#10b981' }} size={32} />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <AdminLogin onLogin={handleLogin} />;
+  }
+
   return (
     <div className="app-container">
       <div className="ambient-glow-1" />
       <div className="ambient-glow-2" />
 
+      {/* Sidebar Overlay for Mobile */}
+      <div 
+        className={`sidebar-overlay ${mobileMenuOpen ? 'active' : ''}`} 
+        onClick={() => setMobileMenuOpen(false)} 
+      />
+
       {/* ── Sidebar ── */}
-      <aside className="sidebar">
+      <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''}`}>
         {/* Brand */}
         <div className="brand-section">
           <img src={muxxLogo} alt="Muxx Digital" />
@@ -209,10 +255,18 @@ export default function App() {
             <div
               key={id}
               className={`menu-item ${activeTab === id ? 'active' : ''}`}
-              onClick={() => setActiveTab(id)}
+              onClick={() => {
+                setActiveTab(id);
+                setMobileMenuOpen(false);
+              }}
               role="button"
               tabIndex={0}
-              onKeyDown={e => e.key === 'Enter' && setActiveTab(id)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  setActiveTab(id);
+                  setMobileMenuOpen(false);
+                }
+              }}
             >
               <span className="menu-icon-wrap"><Icon size={16} /></span>
               <span>{label}</span>
@@ -222,7 +276,11 @@ export default function App() {
 
         {/* Footer */}
         <div className="sidebar-footer">
-          <div className="sidebar-footer-info">
+          <button className="logout-btn" onClick={handleLogout}>
+            <LogOut size={16} />
+            <span>Sign Out</span>
+          </button>
+          <div className="sidebar-footer-info" style={{ marginTop: '1rem' }}>
             <span><strong>© {new Date().getFullYear()} Muxx Digital</strong></span>
             <span>v1.1.0 · Production</span>
           </div>
@@ -233,9 +291,14 @@ export default function App() {
       <main className="main-content">
         {/* Top Bar */}
         <header className="top-bar">
-          <div className="top-bar-left">
-            <h2>{TAB_META[activeTab].title}</h2>
-            <p>{TAB_META[activeTab].subtitle}</p>
+          <div className="top-bar-left-wrapper">
+            <button className="mobile-toggle-btn" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} aria-label="Toggle Menu">
+              {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
+            <div className="top-bar-left">
+              <h2>{TAB_META[activeTab].title}</h2>
+              <p>{TAB_META[activeTab].subtitle}</p>
+            </div>
           </div>
           <div className="top-bar-right">
             <div className="stat-pill">

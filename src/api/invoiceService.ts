@@ -82,4 +82,6 @@ export const deleteQuotation = async (id: string): Promise<void> => {
   saveAllQuotations(quotations.filter(quo => (quo as { id: string }).id !== id));
 };
 
+// ── Auth API (Now using Firebase Auth directly in AdminLogin) ────────────────
+
 
