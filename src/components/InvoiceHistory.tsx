@@ -118,9 +118,9 @@ export default function InvoiceHistory({
             return;
           }
 
-          // Ultra-compressed PDF for email attachment (guaranteed under 50KB)
-          const emailCanvas = await html2canvas(element, { scale: 0.75, useCORS: true, backgroundColor: '#ffffff' });
-          const emailImgData = emailCanvas.toDataURL('image/jpeg', 0.25);
+          // Ultra-compressed PDF for email attachment (~12-15KB file size)
+          const emailCanvas = await html2canvas(element, { scale: 0.5, useCORS: true, backgroundColor: '#ffffff' });
+          const emailImgData = emailCanvas.toDataURL('image/jpeg', 0.15);
           const emailPdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
           const pdfWidth = emailPdf.internal.pageSize.getWidth();
           const pdfHeight = (emailCanvas.height * pdfWidth) / emailCanvas.width;
