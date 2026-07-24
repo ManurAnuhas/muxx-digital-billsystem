@@ -4,6 +4,7 @@ import {
   Inbox, Clock, CheckCircle, Mail, Link
 } from 'lucide-react';
 import { LOGO_BASE64 } from '../assets/logoBase64';
+import { ConfirmModal } from './ConfirmModal';
 
 interface InvoiceItem {
   description: string;
@@ -67,6 +68,38 @@ export default function InvoiceHistory({
   }, [showToast]);
   // Capture invoice state: tracks which invoice is currently being rendered/captured, and the action ('download' or 'email')
   const [activeCapture, setActiveCapture] = useState<{ id: string; action: 'download' | 'email' } | null>(null);
+
+  // Confirm Modal state
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title?: string;
+    message: string;
+    confirmLabel?: string;
+    variant?: 'danger' | 'primary' | 'success';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    message: '',
+    onConfirm: () => {},
+  });
+
+  const askConfirm = useCallback((
+    message: string,
+    onConfirm: () => void,
+    options?: { title?: string; confirmLabel?: string; variant?: 'danger' | 'primary' | 'success' }
+  ) => {
+    setConfirmModal({
+      isOpen: true,
+      message,
+      onConfirm: () => {
+        onConfirm();
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+      },
+      title: options?.title,
+      confirmLabel: options?.confirmLabel,
+      variant: options?.variant || 'danger',
+    });
+  }, []);
 
   const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2 });
 
@@ -188,14 +221,12 @@ export default function InvoiceHistory({
     onUpdateStatus(invoice.id, 'paid', userLink);
     
     // Auto-prompt to send the receipt
-    const confirmEmail = window.confirm(
-      `Invoice #${invoice.invoiceInfo.number} has been marked as PAID!\n\nDo you want to email the updated Payment Receipt (PDF) to the client (${invoice.client.email}) now?`
+    askConfirm(
+      `Invoice #${invoice.invoiceInfo.number} has been marked as PAID! Do you want to email the updated Payment Receipt (PDF) to ${invoice.client.name} (${invoice.client.email}) now?`,
+      () => handleTriggerAction({ ...invoice, status: 'paid', driveLink: userLink }, 'email'),
+      { title: 'Email Payment Receipt?', confirmLabel: 'Send Email', variant: 'primary' }
     );
-
-    if (confirmEmail) {
-      handleTriggerAction({ ...invoice, status: 'paid', driveLink: userLink }, 'email');
-    }
-  }, [onUpdateStatus, handleTriggerAction]);
+  }, [onUpdateStatus, handleTriggerAction, askConfirm]);
 
   if (invoices.length === 0) {
     return (
@@ -290,9 +321,11 @@ export default function InvoiceHistory({
                     className="btn btn-primary"
                     style={{ background: 'var(--emerald)', borderColor: 'var(--emerald)' }}
                     onClick={() => {
-                      if (window.confirm('Accept this quotation?')) {
-                        onUpdateStatus(invoice.id, 'accepted');
-                      }
+                      askConfirm(
+                        `Accept quotation #${invoice.invoiceInfo.number}?`,
+                        () => onUpdateStatus(invoice.id, 'accepted'),
+                        { title: 'Accept Quotation', confirmLabel: 'Accept', variant: 'success' }
+                      );
                     }}
                     title="Accept Quotation"
                   >
@@ -303,9 +336,11 @@ export default function InvoiceHistory({
                     type="button"
                     className="btn btn-danger"
                     onClick={() => {
-                      if (window.confirm('Decline this quotation?')) {
-                        onUpdateStatus(invoice.id, 'declined');
-                      }
+                      askConfirm(
+                        `Decline quotation #${invoice.invoiceInfo.number}?`,
+                        () => onUpdateStatus(invoice.id, 'declined'),
+                        { title: 'Decline Quotation', confirmLabel: 'Decline', variant: 'danger' }
+                      );
                     }}
                     title="Decline Quotation"
                   >
@@ -338,7 +373,11 @@ export default function InvoiceHistory({
                 type="button"
                 className="btn btn-danger"
                 onClick={() => {
-                  if (window.confirm(`Delete ${type === 'quotation' ? 'quotation' : 'invoice'} ${invoice.invoiceInfo.number}?`)) onDelete(invoice.id);
+                  askConfirm(
+                    `Are you sure you want to delete ${type === 'quotation' ? 'quotation' : 'invoice'} #${invoice.invoiceInfo.number}?`,
+                    () => onDelete(invoice.id),
+                    { title: `Delete ${type === 'quotation' ? 'Quotation' : 'Invoice'}`, confirmLabel: 'Delete', variant: 'danger' }
+                  );
                 }}
                 title={`Delete ${type === 'quotation' ? 'Quotation' : 'Invoice'}`}
               >
@@ -516,6 +555,15 @@ export default function InvoiceHistory({
           </div>
         );
       })}
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmLabel={confirmModal.confirmLabel}
+        variant={confirmModal.variant}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }
