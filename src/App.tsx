@@ -99,7 +99,7 @@ export default function App() {
 
   const [emailConfig, setEmailConfig] = useState<EmailConfig>(() => {
     const saved = localStorage.getItem('muxx_email_config');
-    const defaults = { serviceId: 'service_ik3gpdb', templateId: 'template_nhznk2t', publicKey: 'S4Uim_Y_gCrnTkNyS', attachPdf: false };
+    const defaults = { serviceId: 'service_ik3gpdb', templateId: 'template_nhznk2t', publicKey: 'S4Uim_Y_gCrnTkNyS', attachPdf: true };
     if (saved) {
       const parsed = JSON.parse(saved);
       return {

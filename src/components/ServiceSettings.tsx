@@ -30,7 +30,7 @@ export default function ServiceSettings({
   const [serviceId, setServiceId] = useState(emailConfig.serviceId);
   const [templateId, setTemplateId] = useState(emailConfig.templateId);
   const [publicKey, setPublicKey] = useState(emailConfig.publicKey);
-  const [attachPdf, setAttachPdf] = useState(emailConfig.attachPdf ?? false);
+  const [attachPdf, setAttachPdf] = useState(emailConfig.attachPdf ?? true);
   const [emailSaved, setEmailSaved] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
