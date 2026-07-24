@@ -50,6 +50,7 @@ interface InvoiceHistoryProps {
   onDelete: (id: string) => void;
   onUpdateStatus: (id: string, status: any, driveLink?: string) => void;
   emailConfig: EmailConfig;
+  showToast?: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 export default function InvoiceHistory({
@@ -57,8 +58,13 @@ export default function InvoiceHistory({
   invoices,
   onDelete,
   onUpdateStatus,
-  emailConfig
+  emailConfig,
+  showToast
 }: InvoiceHistoryProps) {
+  const notify = useCallback((msg: string, t: 'success' | 'error' | 'info' = 'info') => {
+    if (showToast) showToast(msg, t);
+    else alert(msg);
+  }, [showToast]);
   // Capture invoice state: tracks which invoice is currently being rendered/captured, and the action ('download' or 'email')
   const [activeCapture, setActiveCapture] = useState<{ id: string; action: 'download' | 'email' } | null>(null);
 
@@ -86,7 +92,7 @@ export default function InvoiceHistory({
     setTimeout(async () => {
       const element = document.getElementById(`invoice-print-capture-${finalInvoice.id}`);
       if (!element) {
-        alert('Render template not found.');
+        notify('Render template not found.', 'error');
         setActiveCapture(null);
         return;
       }
@@ -105,15 +111,16 @@ export default function InvoiceHistory({
           const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
           pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
           pdf.save(`Muxx_${type === 'quotation' ? 'Quotation' : 'Invoice'}_${invoice.invoiceInfo.number}.pdf`);
+          notify(`${type === 'quotation' ? 'Quotation' : 'Invoice'} PDF downloaded!`, 'success');
         } else {
           // Send Email process
           if (!invoice.client.email) {
-            alert('Client does not have an email address specified.');
+            notify('Client does not have an email address specified.', 'error');
             setActiveCapture(null);
             return;
           }
           if (!emailConfig.serviceId || !emailConfig.templateId || !emailConfig.publicKey) {
-            alert('Email settings are not configured. Go to Settings and set credentials first.');
+            notify('Email settings are not configured. Go to Settings and set credentials first.', 'error');
             setActiveCapture(null);
             return;
           }
@@ -153,7 +160,7 @@ export default function InvoiceHistory({
           });
 
           if (response.ok) {
-            alert(`Email sent successfully to ${finalInvoice.client.name} (${finalInvoice.client.email})!`);
+            notify(`Email sent successfully to ${finalInvoice.client.name} (${finalInvoice.client.email})!`, 'success');
           } else {
             const errorMsg = await response.text();
             throw new Error(errorMsg || 'Failed sending email.');
@@ -161,7 +168,7 @@ export default function InvoiceHistory({
         }
       } catch (err: any) {
         console.error('PDF/Email Error:', err);
-        alert(`Failed to complete action: ${err.message || err}`);
+        notify(`Failed to complete action: ${err.message || err}`, 'error');
       } finally {
         setActiveCapture(null);
       }

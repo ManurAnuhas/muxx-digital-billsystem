@@ -11,6 +11,7 @@ import {
   fetchInvoices, createInvoice, updateInvoice, deleteInvoice,
   fetchQuotations, createQuotation, updateQuotation, deleteQuotation
 } from './api/invoiceService';
+import { ToastContainer, ToastMessage } from './components/Toast';
 import './App.css';
 
 interface ServiceOption {
@@ -80,6 +81,16 @@ const TAB_META: Record<TabType, { title: string; subtitle: string }> = {
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('create');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const id = Date.now().toString() + Math.random().toString();
+    setToasts((prev) => [...prev, { id, type, message }]);
+  };
+
+  const handleDismissToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
   
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -231,6 +242,7 @@ export default function App() {
 
   return (
     <div className="app-container">
+      <ToastContainer toasts={toasts} onDismiss={handleDismissToast} />
       <div className="ambient-glow-1" />
       <div className="ambient-glow-2" />
 
@@ -351,6 +363,7 @@ export default function App() {
               onSave={handleSaveInvoice}
               emailConfig={emailConfig}
               invoices={invoices}
+              showToast={showToast}
             />
           )}
           {activeTab === 'create_quotation' && (
@@ -360,6 +373,7 @@ export default function App() {
               onSave={handleSaveQuotation}
               emailConfig={emailConfig}
               invoices={quotations}
+              showToast={showToast}
             />
           )}
           {activeTab === 'history' && (
@@ -369,6 +383,7 @@ export default function App() {
               onDelete={handleDeleteInvoice}
               onUpdateStatus={handleUpdateInvoiceStatus}
               emailConfig={emailConfig}
+              showToast={showToast}
             />
           )}
           {activeTab === 'quotation_history' && (
@@ -378,6 +393,7 @@ export default function App() {
               onDelete={handleDeleteQuotation}
               onUpdateStatus={handleUpdateQuotationStatus}
               emailConfig={emailConfig}
+              showToast={showToast}
             />
           )}
           {activeTab === 'settings' && (

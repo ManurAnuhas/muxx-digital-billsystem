@@ -66,6 +66,7 @@ interface InvoiceGeneratorProps {
   }) => void;
   emailConfig: EmailConfig;
   invoices?: SavedInvoice[];
+  showToast?: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 const getNextInvoiceNumber = (invoices: SavedInvoice[], type: 'invoice' | 'quotation' = 'invoice') => {
@@ -109,7 +110,11 @@ const getNextInvoiceNumber = (invoices: SavedInvoice[], type: 'invoice' | 'quota
   return `${bestPrefix}${paddedVal}`;
 };
 
-export default function InvoiceGenerator({ type = 'invoice', services, onSave, emailConfig, invoices = [] }: InvoiceGeneratorProps) {
+export default function InvoiceGenerator({ type = 'invoice', services, onSave, emailConfig, invoices = [], showToast }: InvoiceGeneratorProps) {
+  const notify = useCallback((msg: string, t: 'success' | 'error' | 'info' = 'info') => {
+    if (showToast) showToast(msg, t);
+    else alert(msg);
+  }, [showToast]);
   const [client, setClient] = useState<ClientInfo>({ name: '', email: '', phone: '', address: '' });
 
   const [invoiceInfo, setInvoiceInfo] = useState<InvoiceInfo>({
@@ -283,22 +288,23 @@ export default function InvoiceGenerator({ type = 'invoice', services, onSave, e
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
       pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
       pdf.save(`Muxx_${type === 'quotation' ? 'Quotation' : 'Invoice'}_${invoiceInfo.number}.pdf`);
+      notify(`${type === 'quotation' ? 'Quotation' : 'Invoice'} PDF downloaded!`, 'success');
     } catch (err) {
       (element as HTMLElement).style.zoom = originalZoom;
       console.error('PDF error:', err);
-      alert('Failed to generate PDF. See console for details.');
+      notify('Failed to generate PDF. See console for details.', 'error');
     }
-  }, [invoiceInfo, type]);
+  }, [invoiceInfo, type, notify]);
 
   const handleSendEmail = useCallback(async () => {
-    if (!client.email) { alert('Please enter a Client Email before sending.'); return; }
+    if (!client.email) { notify('Please enter a Client Email before sending.', 'error'); return; }
     if (!emailConfig.serviceId || !emailConfig.templateId || !emailConfig.publicKey) {
-      alert('Email configuration is incomplete. Configure EmailJS keys in the Settings tab first.');
+      notify('Email configuration is incomplete. Configure EmailJS keys in the Settings tab first.', 'error');
       return;
     }
     setSendingEmail(true);
     const element = document.getElementById('invoice-capture-area');
-    if (!element) { alert('Capture element not found.'); setSendingEmail(false); return; }
+    if (!element) { notify('Capture element not found.', 'error'); setSendingEmail(false); return; }
 
     const originalZoom = (element as HTMLElement).style.zoom;
     (element as HTMLElement).style.zoom = '1';
@@ -333,20 +339,20 @@ export default function InvoiceGenerator({ type = 'invoice', services, onSave, e
       formData.append('invoice_pdf', pdfBlob, `Muxx_${type === 'quotation' ? 'Quotation' : 'Invoice'}_${invoiceInfo.number}.pdf`);
 
       const response = await fetch('https://api.emailjs.com/api/v1.0/email/send-form', { method: 'POST', body: formData });
-      if (response.ok) alert(`${type === 'quotation' ? 'Quotation' : 'Invoice'} sent to ${client.name} (${client.email})!`);
+      if (response.ok) notify(`${type === 'quotation' ? 'Quotation' : 'Invoice'} sent to ${client.name} (${client.email})!`, 'success');
       else { const t = await response.text(); throw new Error(t || 'EmailJS failed.'); }
     } catch (err: any) {
       if (element) (element as HTMLElement).style.zoom = originalZoom;
       console.error('Email error:', err);
-      alert(`Failed to send email: ${err.message || err}`);
+      notify(`Failed to send email: ${err.message || err}`, 'error');
     } finally { setSendingEmail(false); }
-  }, [client, invoiceInfo, total, items, emailConfig, driveLink, type]);
+  }, [client, invoiceInfo, total, items, emailConfig, driveLink, type, notify]);
 
   const handleSaveInvoice = useCallback(() => {
-    if (!client.name) { alert('Please enter a Client Name before saving.'); return; }
+    if (!client.name) { notify('Please enter a Client Name before saving.', 'error'); return; }
     onSave({ id: Date.now().toString(), invoiceInfo, client, items, subtotal, taxRate, discount, total, status, driveLink });
-    alert(`${type === 'quotation' ? 'Quotation' : 'Invoice'} saved to history!`);
-  }, [client, invoiceInfo, items, subtotal, taxRate, discount, total, status, driveLink, onSave, type]);
+    notify(`${type === 'quotation' ? 'Quotation' : 'Invoice'} saved to history!`, 'success');
+  }, [client, invoiceInfo, items, subtotal, taxRate, discount, total, status, driveLink, onSave, type, notify]);
 
   const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2 });
 
