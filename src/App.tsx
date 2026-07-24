@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
 import muxxLogo from './assets/logo.png';
-import { PlusCircle, History, Settings, TrendingUp, Users, LayoutDashboard } from 'lucide-react';
+import { PlusCircle, History, Settings, TrendingUp, Users, LayoutDashboard, FileText, FileSpreadsheet } from 'lucide-react';
 import InvoiceGenerator from './components/InvoiceGenerator';
 import InvoiceHistory from './components/InvoiceHistory';
 import ServiceSettings from './components/ServiceSettings';
-import { fetchInvoices, createInvoice, updateInvoice, deleteInvoice } from './api/invoiceService';
+import { 
+  fetchInvoices, createInvoice, updateInvoice, deleteInvoice,
+  fetchQuotations, createQuotation, updateQuotation, deleteQuotation
+} from './api/invoiceService';
 import './App.css';
 
 interface ServiceOption {
@@ -41,7 +44,7 @@ interface SavedInvoice {
   taxRate: number;
   discount: number;
   total: number;
-  status?: 'pending' | 'paid';
+  status?: any;
   driveLink?: string;
 }
 
@@ -61,12 +64,14 @@ const DEFAULT_SERVICES: ServiceOption[] = [
   { id: 'preset-6', name: 'SEO Auditing & Optimization', price: 12000 }
 ];
 
-type TabType = 'create' | 'history' | 'settings';
+type TabType = 'create' | 'create_quotation' | 'history' | 'quotation_history' | 'settings';
 
 const TAB_META: Record<TabType, { title: string; subtitle: string }> = {
-  create:   { title: 'Create Invoice',   subtitle: 'Generate and send professional billing receipts to clients' },
-  history:  { title: 'Invoice History',  subtitle: 'Search, download, and manage all generated invoices' },
-  settings: { title: 'Service Catalog',  subtitle: 'Configure pricing presets and email integration settings' },
+  create:            { title: 'Create Invoice',      subtitle: 'Generate and send professional billing receipts to clients' },
+  create_quotation:  { title: 'Create Quotation',    subtitle: 'Generate and send professional price estimates to clients' },
+  history:           { title: 'Invoice History',     subtitle: 'Search, download, and manage all generated invoices' },
+  quotation_history: { title: 'Quotation History',   subtitle: 'Search, download, and manage all generated quotations' },
+  settings:          { title: 'Service Catalog',     subtitle: 'Configure pricing presets and email integration settings' },
 };
 
 export default function App() {
@@ -93,11 +98,16 @@ export default function App() {
   });
 
   const [invoices, setInvoices] = useState<SavedInvoice[]>([]);
+  const [quotations, setQuotations] = useState<SavedInvoice[]>([]);
 
   useEffect(() => {
     fetchInvoices()
       .then(data => setInvoices(data as SavedInvoice[]))
       .catch(err => console.error('Failed to load invoices:', err));
+
+    fetchQuotations()
+      .then(data => setQuotations(data as SavedInvoice[]))
+      .catch(err => console.error('Failed to load quotations:', err));
   }, []);
 
   useEffect(() => { localStorage.setItem('muxx_preset_services', JSON.stringify(services)); }, [services]);
@@ -109,6 +119,7 @@ export default function App() {
   const handleDeleteService = (id: string) =>
     setServices(prev => prev.filter(s => s.id !== id));
 
+  // Invoice Handlers
   const handleSaveInvoice = async (invoice: Omit<SavedInvoice, 'id'>) => {
     try {
       const newInv = await createInvoice(invoice as Record<string, unknown>) as SavedInvoice;
@@ -136,13 +147,46 @@ export default function App() {
     }
   };
 
+  // Quotation Handlers
+  const handleSaveQuotation = async (quotation: Omit<SavedInvoice, 'id'>) => {
+    try {
+      const newQuo = await createQuotation(quotation as Record<string, unknown>) as SavedInvoice;
+      setQuotations(prev => [newQuo, ...prev]);
+    } catch (err) {
+      console.error('Error saving quotation:', err);
+    }
+  };
+
+  const handleUpdateQuotationStatus = async (id: string, status: any, driveLink?: string) => {
+    try {
+      const updated = await updateQuotation(id, { status, driveLink }) as SavedInvoice;
+      setQuotations(prev => prev.map(quo => (quo.id === id ? updated : quo)));
+    } catch (err) {
+      console.error('Error updating quotation status:', err);
+    }
+  };
+
+  const handleDeleteQuotation = async (id: string) => {
+    try {
+      await deleteQuotation(id);
+      setQuotations(prev => prev.filter(quo => quo.id !== id));
+    } catch (err) {
+      console.error('Error deleting quotation:', err);
+    }
+  };
+
   const totalBilled = invoices.reduce((sum, inv) => sum + inv.total, 0);
-  const clientCount = new Set(invoices.map(inv => inv.client.name.toLowerCase())).size;
+  const clientCount = new Set([
+    ...invoices.map(inv => inv.client.name.toLowerCase().trim()),
+    ...quotations.map(quo => quo.client.name.toLowerCase().trim())
+  ].filter(Boolean)).size;
 
   const navItems = [
-    { id: 'create'   as TabType, label: 'Create Invoice',  Icon: PlusCircle },
-    { id: 'history'  as TabType, label: 'Invoice History', Icon: History },
-    { id: 'settings' as TabType, label: 'Service Catalog', Icon: Settings },
+    { id: 'create'            as TabType, label: 'Create Invoice',      Icon: PlusCircle },
+    { id: 'create_quotation'  as TabType, label: 'Create Quotation',    Icon: FileSpreadsheet },
+    { id: 'history'           as TabType, label: 'Invoice History',     Icon: History },
+    { id: 'quotation_history' as TabType, label: 'Quotation History',   Icon: FileText },
+    { id: 'settings'          as TabType, label: 'Service Catalog',     Icon: Settings },
   ];
 
   return (
@@ -180,7 +224,7 @@ export default function App() {
         <div className="sidebar-footer">
           <div className="sidebar-footer-info">
             <span><strong>© {new Date().getFullYear()} Muxx Digital</strong></span>
-            <span>v1.0.0 · Production</span>
+            <span>v1.1.0 · Production</span>
           </div>
         </div>
       </aside>
@@ -223,6 +267,15 @@ export default function App() {
                 <span className="stat-pill-value">{invoices.length}</span>
               </div>
             </div>
+            <div className="stat-pill">
+              <div className="stat-pill-icon" style={{ background: 'rgba(139,92,246,0.12)', color: 'var(--violet-lt)' }}>
+                <FileText size={15} />
+              </div>
+              <div className="stat-pill-text">
+                <span className="stat-pill-label">Quotations</span>
+                <span className="stat-pill-value">{quotations.length}</span>
+              </div>
+            </div>
           </div>
         </header>
 
@@ -230,17 +283,37 @@ export default function App() {
         <div className="page-body">
           {activeTab === 'create' && (
             <InvoiceGenerator
+              type="invoice"
               services={services}
               onSave={handleSaveInvoice}
               emailConfig={emailConfig}
               invoices={invoices}
             />
           )}
+          {activeTab === 'create_quotation' && (
+            <InvoiceGenerator
+              type="quotation"
+              services={services}
+              onSave={handleSaveQuotation}
+              emailConfig={emailConfig}
+              invoices={quotations}
+            />
+          )}
           {activeTab === 'history' && (
             <InvoiceHistory
+              type="invoice"
               invoices={invoices}
               onDelete={handleDeleteInvoice}
               onUpdateStatus={handleUpdateInvoiceStatus}
+              emailConfig={emailConfig}
+            />
+          )}
+          {activeTab === 'quotation_history' && (
+            <InvoiceHistory
+              type="quotation"
+              invoices={quotations}
+              onDelete={handleDeleteQuotation}
+              onUpdateStatus={handleUpdateQuotationStatus}
               emailConfig={emailConfig}
             />
           )}
@@ -258,3 +331,4 @@ export default function App() {
     </div>
   );
 }
+

@@ -1259,3 +1259,77 @@ select.form-control option {
   100% { transform: scale(2.5); opacity: 0; }
 }
 
+/* Autocomplete Suggestion Dropdown */
+.autocomplete-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.autocomplete-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: #14121e;
+  border: 1px solid var(--bd-med);
+  border-radius: var(--radius-sm);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1000;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  margin-top: 4px;
+  backdrop-filter: blur(10px);
+}
+
+.autocomplete-suggestion-item {
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  transition: background var(--t-fast) var(--ease);
+}
+
+.autocomplete-suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.autocomplete-suggestion-item:hover {
+  background: rgba(139, 92, 246, 0.12);
+}
+
+.autocomplete-suggestion-name {
+  font-weight: 600;
+  color: var(--txt-hi);
+  font-size: 0.85rem;
+}
+
+.autocomplete-suggestion-meta {
+  font-size: 0.72rem;
+  color: var(--txt-med);
+}
+
+/* Extra badge for red status (declined) */
+.badge-red {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--red);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+/* Extra status toggles for Quotations */
+.status-toggle-btn.active.accepted {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--emerald);
+  border-color: rgba(16, 185, 129, 0.25);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.05);
+}
+
+.status-toggle-btn.active.declined {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--red);
+  border-color: rgba(239, 68, 68, 0.25);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.05);
+}
+
+

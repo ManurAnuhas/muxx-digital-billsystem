@@ -47,10 +47,10 @@ interface SavedInvoice {
   discount: number;
   total: number;
   status?: 'pending' | 'paid';
-  driveLink?: string;
 }
 
 interface InvoiceGeneratorProps {
+  type?: 'invoice' | 'quotation';
   services: ServiceOption[];
   onSave: (invoice: {
     id: string;
@@ -61,20 +61,23 @@ interface InvoiceGeneratorProps {
     taxRate: number;
     discount: number;
     total: number;
-    status: 'pending' | 'paid';
+    status: any;
     driveLink?: string;
   }) => void;
   emailConfig: EmailConfig;
   invoices?: SavedInvoice[];
 }
 
-const getNextInvoiceNumber = (invoices: SavedInvoice[]) => {
+const getNextInvoiceNumber = (invoices: SavedInvoice[], type: 'invoice' | 'quotation' = 'invoice') => {
+  const defaultPrefix = type === 'quotation' ? 'MD-Q-' : 'MD-';
+  const startNum = 12; // Start from 12 so next is 13
+  
   if (!invoices || invoices.length === 0) {
-    return 'MD-0013';
+    return `${defaultPrefix}0013`;
   }
   
-  let highestNum = 12; // Start from 12 so next is 13
-  let bestPrefix = 'MD-';
+  let highestNum = startNum;
+  let bestPrefix = defaultPrefix;
   let bestPadding = 4;
 
   invoices.forEach(inv => {
@@ -106,11 +109,11 @@ const getNextInvoiceNumber = (invoices: SavedInvoice[]) => {
   return `${bestPrefix}${paddedVal}`;
 };
 
-export default function InvoiceGenerator({ services, onSave, emailConfig, invoices = [] }: InvoiceGeneratorProps) {
+export default function InvoiceGenerator({ type = 'invoice', services, onSave, emailConfig, invoices = [] }: InvoiceGeneratorProps) {
   const [client, setClient] = useState<ClientInfo>({ name: '', email: '', phone: '', address: '' });
 
   const [invoiceInfo, setInvoiceInfo] = useState<InvoiceInfo>({
-    number: `MD-${Date.now().toString().slice(-6)}`,
+    number: type === 'quotation' ? `MD-Q-${Date.now().toString().slice(-6)}` : `MD-${Date.now().toString().slice(-6)}`,
     date: new Date().toISOString().split('T')[0],
     dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   });
@@ -121,33 +124,112 @@ export default function InvoiceGenerator({ services, onSave, emailConfig, invoic
   const [discount, setDiscount] = useState<number>(0);
   const [taxRate, setTaxRate] = useState<number>(0);
   const [sendingEmail, setSendingEmail] = useState<boolean>(false);
-  const [status, setStatus] = useState<'pending' | 'paid'>('pending');
+  const [status, setStatus] = useState<string>(type === 'quotation' ? 'proposed' : 'pending');
+
+  // Autocomplete Suggestions logic
+  const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
+  const [suggestions, setSuggestions] = useState<ClientInfo[]>([]);
+
+  const allClients = useMemo(() => {
+    const list: ClientInfo[] = [];
+    try {
+      const invs = JSON.parse(localStorage.getItem('muxx_invoices') || '[]');
+      const quots = JSON.parse(localStorage.getItem('muxx_quotations') || '[]');
+      const clientsMap = new Map<string, ClientInfo>();
+      
+      [...invs, ...quots].forEach((item: any) => {
+        if (item && item.client && item.client.name) {
+          const key = item.client.name.toLowerCase().trim();
+          clientsMap.set(key, item.client);
+        }
+      });
+      return Array.from(clientsMap.values());
+    } catch (e) {
+      console.error('Failed to parse storage for autocomplete clients:', e);
+    }
+    return list;
+  }, [invoices]);
+
+  const handleClientNameChange = (val: string) => {
+    setClient(prev => ({ ...prev, name: val }));
+    if (!val.trim()) {
+      setSuggestions(allClients);
+      setShowSuggestions(allClients.length > 0);
+      return;
+    }
+    const filtered = allClients.filter(c => 
+      c.name.toLowerCase().includes(val.toLowerCase())
+    );
+    setSuggestions(filtered);
+    setShowSuggestions(filtered.length > 0);
+  };
+
+  const handleClientNameFocus = () => {
+    if (client.name.trim()) {
+      const filtered = allClients.filter(c => 
+        c.name.toLowerCase().includes(client.name.toLowerCase())
+      );
+      setSuggestions(filtered);
+      setShowSuggestions(filtered.length > 0);
+    } else {
+      setSuggestions(allClients);
+      setShowSuggestions(allClients.length > 0);
+    }
+  };
+
+  const handleSelectSuggestion = (c: ClientInfo) => {
+    setClient(c);
+    setShowSuggestions(false);
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (showSuggestions) {
+        const container = document.getElementById('client-name-autocomplete-container');
+        if (container && !container.contains(e.target as Node)) {
+          setShowSuggestions(false);
+        }
+      }
+    };
+    document.onmousedown = handleClickOutside;
+    return () => {
+      document.onmousedown = null;
+    };
+  }, [showSuggestions]);
+
+  useEffect(() => {
+    setStatus(type === 'quotation' ? 'proposed' : 'pending');
+  }, [type]);
 
   useEffect(() => {
     if (invoices && invoices.length > 0) {
       setInvoiceInfo(prev => {
-        const isDefaultTimestamp = prev.number.startsWith('MD-') && prev.number.length >= 9 && !isNaN(Number(prev.number.slice(3)));
-        if (isDefaultTimestamp || prev.number === 'MD-0013') {
+        const defaultPrefix = type === 'quotation' ? 'MD-Q-' : 'MD-';
+        const isDefaultTimestamp = prev.number.startsWith(defaultPrefix) && prev.number.length >= (defaultPrefix.length + 5) && !isNaN(Number(prev.number.slice(defaultPrefix.length)));
+        const defaultStartingNumber = type === 'quotation' ? 'MD-Q-0013' : 'MD-0013';
+        if (isDefaultTimestamp || prev.number === defaultStartingNumber) {
           return {
             ...prev,
-            number: getNextInvoiceNumber(invoices)
+            number: getNextInvoiceNumber(invoices, type)
           };
         }
         return prev;
       });
     } else {
       setInvoiceInfo(prev => {
-        const isDefaultTimestamp = prev.number.startsWith('MD-') && prev.number.length >= 9 && !isNaN(Number(prev.number.slice(3)));
+        const defaultPrefix = type === 'quotation' ? 'MD-Q-' : 'MD-';
+        const isDefaultTimestamp = prev.number.startsWith(defaultPrefix) && prev.number.length >= (defaultPrefix.length + 5) && !isNaN(Number(prev.number.slice(defaultPrefix.length)));
         if (isDefaultTimestamp) {
           return {
             ...prev,
-            number: 'MD-0013'
+            number: type === 'quotation' ? 'MD-Q-0013' : 'MD-0013'
           };
         }
         return prev;
       });
     }
-  }, [invoices]);
+  }, [invoices, type]);
+
 
   const subtotal = useMemo(() => items.reduce((s, i) => s + i.qty * i.price, 0), [items]);
   const discountAmount = useMemo(() => (subtotal * discount) / 100, [subtotal, discount]);
@@ -200,13 +282,13 @@ export default function InvoiceGenerator({ services, onSave, emailConfig, invoic
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
       pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
-      pdf.save(`Muxx_Invoice_${invoiceInfo.number}.pdf`);
+      pdf.save(`Muxx_${type === 'quotation' ? 'Quotation' : 'Invoice'}_${invoiceInfo.number}.pdf`);
     } catch (err) {
       (element as HTMLElement).style.zoom = originalZoom;
       console.error('PDF error:', err);
       alert('Failed to generate PDF. See console for details.');
     }
-  }, [invoiceInfo]);
+  }, [invoiceInfo, type]);
 
   const handleSendEmail = useCallback(async () => {
     if (!client.email) { alert('Please enter a Client Email before sending.'); return; }
@@ -216,7 +298,7 @@ export default function InvoiceGenerator({ services, onSave, emailConfig, invoic
     }
     setSendingEmail(true);
     const element = document.getElementById('invoice-capture-area');
-    if (!element) { alert('Invoice element not found.'); setSendingEmail(false); return; }
+    if (!element) { alert('Capture element not found.'); setSendingEmail(false); return; }
 
     const originalZoom = (element as HTMLElement).style.zoom;
     (element as HTMLElement).style.zoom = '1';
@@ -245,25 +327,26 @@ export default function InvoiceGenerator({ services, onSave, emailConfig, invoic
       formData.append('total_amount', `LKR ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
       formData.append('items_summary', items.map(item => `${item.description} (x${item.qty})`).join(', '));
       formData.append('drive_link', driveLink || '');
+      formData.append('subject', type === 'quotation' ? `Quotation ${invoiceInfo.number} from Muxx Digital` : `Invoice ${invoiceInfo.number} from Muxx Digital`);
       if (emailConfig.attachPdf) {
-        formData.append('invoice_pdf', pdfBlob, `Muxx_Invoice_${invoiceInfo.number}.pdf`);
+        formData.append('invoice_pdf', pdfBlob, `Muxx_${type === 'quotation' ? 'Quotation' : 'Invoice'}_${invoiceInfo.number}.pdf`);
       }
 
       const response = await fetch('https://api.emailjs.com/api/v1.0/email/send-form', { method: 'POST', body: formData });
-      if (response.ok) alert(`Invoice sent to ${client.name} (${client.email})!`);
+      if (response.ok) alert(`${type === 'quotation' ? 'Quotation' : 'Invoice'} sent to ${client.name} (${client.email})!`);
       else { const t = await response.text(); throw new Error(t || 'EmailJS failed.'); }
     } catch (err: any) {
       if (element) (element as HTMLElement).style.zoom = originalZoom;
       console.error('Email error:', err);
       alert(`Failed to send email: ${err.message || err}`);
     } finally { setSendingEmail(false); }
-  }, [client, invoiceInfo, total, items, emailConfig, driveLink]);
+  }, [client, invoiceInfo, total, items, emailConfig, driveLink, type]);
 
   const handleSaveInvoice = useCallback(() => {
     if (!client.name) { alert('Please enter a Client Name before saving.'); return; }
     onSave({ id: Date.now().toString(), invoiceInfo, client, items, subtotal, taxRate, discount, total, status, driveLink });
-    alert('Invoice saved to history!');
-  }, [client, invoiceInfo, items, subtotal, taxRate, discount, total, status, driveLink, onSave]);
+    alert(`${type === 'quotation' ? 'Quotation' : 'Invoice'} saved to history!`);
+  }, [client, invoiceInfo, items, subtotal, taxRate, discount, total, status, driveLink, onSave, type]);
 
   const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2 });
 
@@ -278,10 +361,37 @@ export default function InvoiceGenerator({ services, onSave, emailConfig, invoic
             <User size={15} /> Client Details
           </h3>
           <div className="form-grid">
-            <div className="form-group">
+            <div className="form-group" id="client-name-autocomplete-container" style={{ position: 'relative' }}>
               <label>Client Name</label>
-              <input type="text" className="form-control" placeholder="e.g. John Doe"
-                value={client.name} onChange={e => setClient({ ...client, name: e.target.value })} />
+              <div className="autocomplete-wrapper">
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="e.g. John Doe"
+                  value={client.name}
+                  onChange={e => handleClientNameChange(e.target.value)}
+                  onFocus={handleClientNameFocus}
+                  autoComplete="off"
+                />
+                {showSuggestions && (
+                  <div className="autocomplete-suggestions">
+                    {suggestions.map((c, i) => (
+                      <div
+                        key={i}
+                        className="autocomplete-suggestion-item"
+                        onClick={() => handleSelectSuggestion(c)}
+                      >
+                        <span className="autocomplete-suggestion-name">{c.name}</span>
+                        {(c.email || c.phone) && (
+                          <span className="autocomplete-suggestion-meta">
+                            {c.email} {c.phone ? `· ${c.phone}` : ''}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="form-group">
               <label>Client Email</label>
@@ -304,11 +414,11 @@ export default function InvoiceGenerator({ services, onSave, emailConfig, invoic
         {/* Invoice Meta */}
         <div className="card">
           <h3 className="section-subtitle">
-            <Receipt size={15} /> Invoice Details
+            <Receipt size={15} /> {type === 'quotation' ? 'Quotation Details' : 'Invoice Details'}
           </h3>
           <div className="form-grid">
             <div className="form-group">
-              <label>Invoice Number</label>
+              <label>{type === 'quotation' ? 'Quotation Number' : 'Invoice Number'}</label>
               <input type="text" className="form-control"
                 value={invoiceInfo.number}
                 onChange={e => setInvoiceInfo({ ...invoiceInfo, number: e.target.value })} />
@@ -320,42 +430,68 @@ export default function InvoiceGenerator({ services, onSave, emailConfig, invoic
                 onChange={e => setInvoiceInfo({ ...invoiceInfo, date: e.target.value })} />
             </div>
             <div className="form-group">
-              <label>Due Date</label>
+              <label>{type === 'quotation' ? 'Valid Until' : 'Due Date'}</label>
               <input type="date" className="form-control"
                 value={invoiceInfo.dueDate}
                 onChange={e => setInvoiceInfo({ ...invoiceInfo, dueDate: e.target.value })} />
             </div>
             <div className="form-group">
-              <label>Payment Status</label>
+              <label>{type === 'quotation' ? 'Quotation Status' : 'Payment Status'}</label>
               <div className="status-toggle-group">
-                <button
-                  type="button"
-                  className={`status-toggle-btn pending ${status === 'pending' ? 'active' : ''}`}
-                  onClick={() => setStatus('pending')}
-                >
-                  <span className="status-dot-pulse pending" />
-                  <span>Pending</span>
-                </button>
-                <button
-                  type="button"
-                  className={`status-toggle-btn paid ${status === 'paid' ? 'active' : ''}`}
-                  onClick={() => setStatus('paid')}
-                >
-                  <span className="status-dot-pulse paid" />
-                  <span>Paid</span>
-                </button>
+                {type === 'quotation' ? (
+                  <>
+                    <button
+                      type="button"
+                      className={`status-toggle-btn pending ${status === 'proposed' ? 'active' : ''}`}
+                      onClick={() => setStatus('proposed')}
+                    >
+                      <span className="status-dot-pulse pending" />
+                      <span>Proposed</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`status-toggle-btn paid ${status === 'accepted' ? 'active accepted' : ''}`}
+                      onClick={() => setStatus('accepted')}
+                    >
+                      <span className="status-dot-pulse paid" />
+                      <span>Accepted</span>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className={`status-toggle-btn pending ${status === 'pending' ? 'active' : ''}`}
+                      onClick={() => setStatus('pending')}
+                    >
+                      <span className="status-dot-pulse pending" />
+                      <span>Pending</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`status-toggle-btn paid ${status === 'paid' ? 'active' : ''}`}
+                      onClick={() => setStatus('paid')}
+                    >
+                      <span className="status-dot-pulse paid" />
+                      <span>Paid</span>
+                    </button>
+                  </>
+                )}
               </div>
             </div>
-            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-              <label>Google Drive / Deliverable Link (Optional)</label>
-              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                <span style={{ position: 'absolute', left: '0.75rem', color: 'var(--txt-lo)' }}><Link size={14} /></span>
-                <input type="url" className="form-control" style={{ paddingLeft: '2.25rem' }} placeholder="e.g. https://drive.google.com/drive/folders/..."
-                  value={driveLink} onChange={e => setDriveLink(e.target.value)} />
+            {type === 'invoice' && (
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <label>Google Drive / Deliverable Link (Optional)</label>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <span style={{ position: 'absolute', left: '0.75rem', color: 'var(--txt-lo)' }}><Link size={14} /></span>
+                  <input type="url" className="form-control" style={{ paddingLeft: '2.25rem' }} placeholder="e.g. https://drive.google.com/drive/folders/..."
+                    value={driveLink} onChange={e => setDriveLink(e.target.value)} />
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
+
 
         {/* Quick Add Service */}
         <div className="card">
@@ -470,13 +606,13 @@ export default function InvoiceGenerator({ services, onSave, emailConfig, invoic
         {/* Action Buttons */}
         <div className="action-group">
           <button type="button" className="btn btn-primary" onClick={handleSaveInvoice}>
-            <Save size={16} /> Save Invoice
+            <Save size={16} /> Save {type === 'quotation' ? 'Quotation' : 'Invoice'}
           </button>
           <button type="button" className="btn btn-secondary" onClick={handleDownloadPdf}>
             <Download size={16} /> Download PDF
           </button>
           <button type="button" className="btn btn-secondary" onClick={handleSendEmail} disabled={sendingEmail}>
-            <Mail size={16} /> {sendingEmail ? 'Sending…' : 'Send Email'}
+            <Mail size={16} /> {sendingEmail ? 'Sending…' : `Send ${type === 'quotation' ? 'Quotation' : 'Email'}`}
           </button>
         </div>
       </div>
@@ -493,7 +629,11 @@ export default function InvoiceGenerator({ services, onSave, emailConfig, invoic
         <div className="preview-frame">
           <div id="invoice-capture-area" className="invoice-render-area">
             {/* Header */}
-            <div className="invoice-pdf-header">
+            <div className="invoice-pdf-header" style={{
+              background: type === 'quotation' 
+                ? 'linear-gradient(130deg, #0f172a 0%, #1e293b 55%, #334155 100%)' 
+                : 'linear-gradient(130deg, #12003a 0%, #3a0090 55%, #7300d0 100%)'
+            }}>
               <div className="invoice-pdf-brand">
                 <img src={LOGO_BASE64} alt="Muxx Digital" />
                 <div className="invoice-pdf-brand-details">
@@ -503,11 +643,11 @@ export default function InvoiceGenerator({ services, onSave, emailConfig, invoic
                 </div>
               </div>
               <div className="invoice-pdf-meta">
-                <div className="invoice-pdf-title">INVOICE</div>
+                <div className="invoice-pdf-title">{type === 'quotation' ? 'QUOTATION' : 'INVOICE'}</div>
                 <div className="invoice-pdf-meta-rows">
-                  <strong>Invoice No:</strong> {invoiceInfo.number}<br />
+                  <strong>{type === 'quotation' ? 'Quotation No:' : 'Invoice No:'}</strong> {invoiceInfo.number}<br />
                   <strong>Date:</strong> {invoiceInfo.date}<br />
-                  <strong>Due Date:</strong> {invoiceInfo.dueDate}
+                  <strong>{type === 'quotation' ? 'Valid Until:' : 'Due Date:'}</strong> {invoiceInfo.dueDate}
                 </div>
               </div>
             </div>
@@ -517,7 +657,7 @@ export default function InvoiceGenerator({ services, onSave, emailConfig, invoic
               {/* Billed To / Payment Info */}
               <div className="invoice-pdf-details">
                 <div className="pdf-address-col">
-                  <h4>Billed To</h4>
+                  <h4>{type === 'quotation' ? 'Quotation For' : 'Billed To'}</h4>
                   <p>
                     <strong>{client.name || 'Client Name'}</strong><br />
                     {client.address && <>{client.address}<br /></>}
@@ -526,20 +666,33 @@ export default function InvoiceGenerator({ services, onSave, emailConfig, invoic
                   </p>
                 </div>
                 <div className="pdf-address-col">
-                  <h4>Payment Info</h4>
-                  {status === 'paid' ? (
-                    <p style={{ color: 'var(--emerald)', fontWeight: 'bold' }}>
-                      Payment Status: PAID<br />
-                      Method: Bank Transfer / Online<br />
-                      Thank you for your payment!
-                    </p>
+                  {type === 'quotation' ? (
+                    <>
+                      <h4>Proposal Terms</h4>
+                      <p>
+                        <strong>Validity:</strong> 14 Days<br />
+                        <strong>Payment Schedule:</strong><br />
+                        50% Advance & 50% Upon Completion
+                      </p>
+                    </>
                   ) : (
-                    <p>
-                      Bank: Sampath Bank<br />
-                      Acc Name: A.M.Anuhas<br />
-                      Acc No: 104752497687<br />
-                      Branch: Panadura
-                    </p>
+                    <>
+                      <h4>Payment Info</h4>
+                      {status === 'paid' ? (
+                        <p style={{ color: 'var(--emerald)', fontWeight: 'bold' }}>
+                          Payment Status: PAID<br />
+                          Method: Bank Transfer / Online<br />
+                          Thank you for your payment!
+                        </p>
+                      ) : (
+                        <p>
+                          Bank: Sampath Bank<br />
+                          Acc Name: A.M.Anuhas<br />
+                          Acc No: 104752497687<br />
+                          Branch: Panadura
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -569,9 +722,13 @@ export default function InvoiceGenerator({ services, onSave, emailConfig, invoic
               {/* Summary */}
               <div className="pdf-summary-block">
                 <div className="pdf-notes">
-                  <h5>Terms & Conditions</h5>
-                  <p>Please send payments within the due date. Contact us for any invoice-related queries.</p>
-                  {status === 'paid' && driveLink && (
+                  <h5>{type === 'quotation' ? 'Estimate Notes' : 'Terms & Conditions'}</h5>
+                  <p>
+                    {type === 'quotation' 
+                      ? 'This is an estimate only. Actual costs may vary depending on design modifications or scope changes.'
+                      : 'Please send payments within the due date. Contact us for any invoice-related queries.'}
+                  </p>
+                  {type === 'invoice' && status === 'paid' && driveLink && (
                     <div style={{ marginTop: '0.75rem', padding: '0.5rem', background: 'rgba(16,185,129,0.08)', borderRadius: '4px', border: '1px solid rgba(16,185,129,0.2)' }}>
                       <h5 style={{ margin: 0, fontSize: '0.75rem', color: 'var(--emerald)' }}>Project / Deliverables Link</h5>
                       <a href={driveLink} target="_blank" rel="noreferrer" style={{ fontSize: '0.72rem', color: 'var(--emerald)', wordBreak: 'break-all', textDecoration: 'underline' }}>
@@ -598,13 +755,20 @@ export default function InvoiceGenerator({ services, onSave, emailConfig, invoic
                     </div>
                   )}
                   <div className="pdf-totals-row grand-total" style={{ position: 'relative' }}>
-                    <span>Total Due:</span>
+                    <span>{type === 'quotation' ? 'Estimated Total:' : 'Total Due:'}</span>
                     <span>LKR {fmt(total)}</span>
-                    {status === 'paid' && (
+                    {type === 'invoice' && status === 'paid' && (
                       <div className="pdf-paid-stamp-overlay">
                         <span className="stamp-sub">MUXX DIGITAL</span>
                         <span className="stamp-main">PAID</span>
                         <span className="stamp-foot">RECEIVED</span>
+                      </div>
+                    )}
+                    {type === 'quotation' && status === 'accepted' && (
+                      <div className="pdf-paid-stamp-overlay" style={{ border: '3px double #10b981', color: '#10b981', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.18)' }}>
+                        <span className="stamp-sub">MUXX DIGITAL</span>
+                        <span className="stamp-main">APPROVED</span>
+                        <span className="stamp-foot">ACCEPTED</span>
                       </div>
                     )}
                   </div>
@@ -633,3 +797,4 @@ export default function InvoiceGenerator({ services, onSave, emailConfig, invoic
     </div>
   );
 }
+
