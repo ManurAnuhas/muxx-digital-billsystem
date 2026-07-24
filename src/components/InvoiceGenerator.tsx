@@ -307,14 +307,15 @@ export default function InvoiceGenerator({ type = 'invoice', services, onSave, e
       const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
         import('html2canvas'), import('jspdf')
       ]);
-      const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+      // Generate optimized PDF for email (smaller file size, still readable)
+      const emailCanvas = await html2canvas(element, { scale: 1.2, useCORS: true, backgroundColor: '#ffffff' });
       (element as HTMLElement).style.zoom = originalZoom;
-      const imgData = canvas.toDataURL('image/jpeg', 0.7);
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
-      const pdfBlob = pdf.output('blob');
+      const emailImgData = emailCanvas.toDataURL('image/jpeg', 0.45);
+      const emailPdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pdfWidth = emailPdf.internal.pageSize.getWidth();
+      const pdfHeight = (emailCanvas.height * pdfWidth) / emailCanvas.width;
+      emailPdf.addImage(emailImgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+      const pdfBlob = emailPdf.output('blob');
 
       const formData = new FormData();
       formData.append('service_id', emailConfig.serviceId);

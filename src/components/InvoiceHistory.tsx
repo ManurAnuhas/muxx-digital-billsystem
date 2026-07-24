@@ -96,14 +96,14 @@ export default function InvoiceHistory({
       ]);
 
       try {
-        const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-        const imgData = canvas.toDataURL('image/jpeg', 0.7);
-        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
-
         if (action === 'download') {
+          // Full quality PDF for download
+          const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+          const imgData = canvas.toDataURL('image/jpeg', 0.7);
+          const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+          const pdfWidth = pdf.internal.pageSize.getWidth();
+          const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+          pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
           pdf.save(`Muxx_${type === 'quotation' ? 'Quotation' : 'Invoice'}_${invoice.invoiceInfo.number}.pdf`);
         } else {
           // Send Email process
@@ -118,7 +118,15 @@ export default function InvoiceHistory({
             return;
           }
 
-          const pdfBlob = pdf.output('blob');
+          // Optimized smaller PDF for email attachment (under 50KB)
+          const emailCanvas = await html2canvas(element, { scale: 1.2, useCORS: true, backgroundColor: '#ffffff' });
+          const emailImgData = emailCanvas.toDataURL('image/jpeg', 0.45);
+          const emailPdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+          const pdfWidth = emailPdf.internal.pageSize.getWidth();
+          const pdfHeight = (emailCanvas.height * pdfWidth) / emailCanvas.width;
+          emailPdf.addImage(emailImgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+
+          const pdfBlob = emailPdf.output('blob');
           const formData = new FormData();
           formData.append('service_id', emailConfig.serviceId);
           formData.append('template_id', emailConfig.templateId);
