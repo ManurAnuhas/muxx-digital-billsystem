@@ -11,7 +11,7 @@ import {
   fetchInvoices, createInvoice, updateInvoice, deleteInvoice,
   fetchQuotations, createQuotation, updateQuotation, deleteQuotation
 } from './api/invoiceService';
-import { ToastContainer, ToastMessage } from './components/Toast';
+import { ToastContainer, type ToastMessage } from './components/Toast';
 import './App.css';
 
 interface ServiceOption {
