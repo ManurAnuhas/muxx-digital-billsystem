@@ -145,9 +145,7 @@ export default function InvoiceHistory({
           formData.append('total_amount', `LKR ${invoice.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
           formData.append('items_summary', invoice.items.map(item => `${item.description} (x${item.qty})`).join(', '));
           formData.append('drive_link', finalInvoice.driveLink || '');
-          if (emailConfig.attachPdf !== false) {
-            formData.append('invoice_pdf', pdfBlob, `Muxx_${type === 'quotation' ? 'Quotation' : 'Invoice'}_${finalInvoice.invoiceInfo.number}.pdf`);
-          }
+          formData.append('invoice_pdf', pdfBlob, `Muxx_${type === 'quotation' ? 'Quotation' : 'Invoice'}_${finalInvoice.invoiceInfo.number}.pdf`);
 
           const response = await fetch('https://api.emailjs.com/api/v1.0/email/send-form', {
             method: 'POST',
